@@ -56,7 +56,39 @@
 </head>
 <body>
 
-<div id="app-main-content">
+<!-- パスワード・ルーム選択画面 -->
+<div id="login-screen" class="fixed inset-0 bg-[#0f172a] flex items-center justify-center p-6 z-[9999]">
+    <div class="w-full max-w-sm space-y-6">
+        <div class="text-center">
+            <div class="text-6xl mb-4">🚑</div>
+            <h1 class="text-2xl font-black text-orange-400">救急情報共有</h1>
+            <p class="text-slate-400 text-sm mt-1">ルームとパスワードを入力してください</p>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6 space-y-4">
+            <div>
+                <label class="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-widest">ルーム選択</label>
+                <select id="login-room" class="w-full bg-slate-900 text-white font-bold p-4 rounded-2xl border-2 border-slate-600 outline-none focus:border-orange-500 text-lg">
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-widest">パスワード</label>
+                <input type="password" id="login-password" 
+                    class="w-full bg-slate-900 text-white font-bold p-4 rounded-2xl border-2 border-slate-600 outline-none focus:border-orange-500 text-xl text-center tracking-widest"
+                    placeholder="••••"
+                    onkeydown="if(event.key==='Enter') window.doLogin()">
+            </div>
+            <div id="login-error" class="hidden text-red-400 text-sm font-bold text-center bg-red-900/30 py-2 rounded-xl">
+                パスワードが違います
+            </div>
+            <button onclick="window.doLogin()" 
+                class="w-full bg-orange-600 text-white font-black py-4 rounded-2xl text-lg active:bg-orange-700 transition-colors shadow-lg shadow-orange-500/30">
+                入室する 🚪
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="app-main-content" class="hidden">
     <div id="sync-indicator" class="fixed bottom-2 right-4 text-xs font-bold text-slate-400 opacity-80 z-50 bg-black/50 px-3 py-1 rounded-full backdrop-blur-sm">
         接続中...
     </div>
@@ -341,38 +373,77 @@
 </div>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-
 // ============================================================
 //  🔧 設定エリア — ここを自分のSupabaseプロジェクト情報に書き換えてください
 //
-//  取得場所: Supabaseコンソール → Project Settings → API Keys
-//    - Project URL  → supabaseUrl （例: https://xxxx.supabase.co）
+//  取得場所: Supabaseコンソール → Project Settings → API
+//    - Project URL  → supabaseUrl
 //    - anon / public → supabaseKey
 //
-//  roomId: チームごとに変えると複数の部屋を使い分けられます
+//  roomId: 部署・チームごとに変えると複数の部屋を使い分けられます
 // ============================================================
 const CONFIG = {
     supabaseUrl: 'https://ajapziiztyhihutbxsmq.supabase.co',
     supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYXB6aWl6dHloaWh1dGJ4c21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NTE5MTQsImV4cCI6MjA4OTIyNzkxNH0.k9MVeio3-693cIH0ZKq56QjNAvaFAZ1v12iDCZnquF8',
+    // ルームIDとパスワードの設定
+    // 追加・変更したい場合はこのリストを編集してください
     rooms: {
-    'rescue_room_1': { label: '第1隊', password: '0911' },
-    'rescue_room_2': { label: '第2隊', password: '0911' },
-    'rescue_room_3': { label: '第3隊', password: '0911' },
-}
+        'rescue_room_1': { label: '第1隊',   password: '0911' },
+        'rescue_room_2': { label: '第2隊',   password: '0911' },
+        'rescue_room_3': { label: '第3隊',   password: '0911' },
+    }
 };
 // ============================================================
+
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 const clientId = Math.random().toString(36).substring(2, 15);
 let supabase = null;
 let syncTimeout = null;
 let pollInterval = null;
 let lastUpdatedAt = null;
+let currentRoomId = null;
+
+// ----------------------------------------------------------------
+// ログイン処理
+// ----------------------------------------------------------------
+const initLoginScreen = () => {
+    const sel = document.getElementById('login-room');
+    if (!sel) return;
+    sel.innerHTML = '';
+    Object.entries(CONFIG.rooms).forEach(([id, room]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = room.label;
+        sel.appendChild(opt);
+    });
+};
+
+window.doLogin = () => {
+    const roomId   = document.getElementById('login-room')?.value;
+    const password = document.getElementById('login-password')?.value;
+    const errEl    = document.getElementById('login-error');
+
+    const room = CONFIG.rooms[roomId];
+    if (!room || password !== room.password) {
+        errEl?.classList.remove('hidden');
+        document.getElementById('login-password').value = '';
+        setTimeout(() => errEl?.classList.add('hidden'), 2000);
+        return;
+    }
+
+    // ログイン成功
+    currentRoomId = roomId;
+    document.getElementById('login-screen')?.classList.add('hidden');
+    document.getElementById('app-main-content')?.classList.remove('hidden');
+    setupSupabase(roomId);
+};
 
 // ----------------------------------------------------------------
 // Supabase 初期化（DBポーリング方式 / WebSocket不要）
 // ----------------------------------------------------------------
-const setupSupabase = async () => {
+const setupSupabase = async (roomId) => {
+    CONFIG.roomId = roomId;
     const indicator = document.getElementById('sync-indicator');
 
     if (!CONFIG.supabaseUrl || CONFIG.supabaseUrl.includes('YOUR_PROJECT_ID')) {
@@ -1047,7 +1118,7 @@ window.updateSummaryView = () => {
 initHistoryUI();
 window.initDials();
 window.updateSummaryView();
-setupSupabase();
+initLoginScreen();
 </script>
 </body>
 </html>
