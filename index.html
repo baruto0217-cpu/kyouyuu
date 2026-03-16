@@ -355,7 +355,11 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const CONFIG = {
     supabaseUrl: 'https://ajapziiztyhihutbxsmq.supabase.co',
     supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYXB6aWl6dHloaWh1dGJ4c21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NTE5MTQsImV4cCI6MjA4OTIyNzkxNH0.k9MVeio3-693cIH0ZKq56QjNAvaFAZ1v12iDCZnquF8',
-    roomId:      'rescue_room_1'
+    rooms: {
+    'rescue_room_1': { label: '第1隊', password: '0911' },
+    'rescue_room_2': { label: '第2隊', password: '0911' },
+    'rescue_room_3': { label: '第3隊', password: '0911' },
+}
 };
 // ============================================================
 
