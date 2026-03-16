@@ -346,14 +346,14 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // ============================================================
 //  🔧 設定エリア — ここを自分のSupabaseプロジェクト情報に書き換えてください
 //
-//  取得場所: Supabaseコンソール → Project Settings → API
-//    - Project URL  → supabaseUrl
+//  取得場所: Supabaseコンソール → Project Settings → API Keys
+//    - Project URL  → supabaseUrl （例: https://xxxx.supabase.co）
 //    - anon / public → supabaseKey
 //
-//  roomId: 部署・チームごとに変えると複数の部屋を使い分けられます
+//  roomId: チームごとに変えると複数の部屋を使い分けられます
 // ============================================================
 const CONFIG = {
-    supabaseUrl: 'https://ajapziiztyhihutbxsmq.supabase.co',
+    supabaseUrl: 'https://YOUR_PROJECT_ID.supabase.co',
     supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYXB6aWl6dHloaWh1dGJ4c21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NTE5MTQsImV4cCI6MjA4OTIyNzkxNH0.k9MVeio3-693cIH0ZKq56QjNAvaFAZ1v12iDCZnquF8',
     roomId:      'rescue_room_1'
 };
@@ -419,7 +419,7 @@ const fetchRemoteData = async () => {
             .eq('room_id', CONFIG.roomId)
             .maybeSingle();
 
-        if (error) { console.error('fetch error:', error.code, error.message, error.details, error.hint); return; }
+        if (error) { console.error('fetch error:', error); return; }
         if (!data) return;
         if (data.client_id === clientId) return;
         if (data.updated_at === lastUpdatedAt) return;
