@@ -80,7 +80,7 @@
             <div id="login-error" class="hidden text-red-400 text-sm font-bold text-center bg-red-900/30 py-2 rounded-xl">
                 パスワードが違います
             </div>
-            <button onclick="window.doLogin()" 
+            <button id="login-btn" onclick="window.doLogin()" 
                 class="w-full bg-orange-600 text-white font-black py-4 rounded-2xl text-lg active:bg-orange-700 transition-colors shadow-lg shadow-orange-500/30">
                 入室する 🚪
             </button>
@@ -417,15 +417,10 @@
 //  roomId: 部署・チームごとに変えると複数の部屋を使い分けられます
 // ============================================================
 const CONFIG = {
-    supabaseUrl: 'https://ajapziiztyhihutbxsmq.supabase.co',
-    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYXB6aWl6dHloaWh1dGJ4c21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NTE5MTQsImV4cCI6MjA4OTIyNzkxNH0.k9MVeio3-693cIH0ZKq56QjNAvaFAZ1v12iDCZnquF8',
-    // ルームIDとパスワードの設定
-    // 追加・変更したい場合はこのリストを編集してください
-    rooms: {
-        'rescue_room_1': { label: '第1隊',   password: '0911' },
-        'rescue_room_2': { label: '第2隊',   password: '0911' },
-        'rescue_room_3': { label: '第3隊',   password: '0911' },
-    }
+    supabaseUrl: 'https://YOUR_PROJECT_ID.supabase.co',
+    supabaseKey: 'YOUR_ANON_PUBLIC_KEY',
+    // ルームとパスワードはSupabaseの rescue_room_config テーブルで管理します
+    // コードの変更は不要です
 };
 // ============================================================
 
@@ -439,18 +434,62 @@ let lastUpdatedAt = null;
 let currentRoomId = null;
 
 // ----------------------------------------------------------------
-// ログイン処理
+// ログイン処理（ルーム情報はSupabaseから取得）
 // ----------------------------------------------------------------
-const initLoginScreen = () => {
-    const sel = document.getElementById('login-room');
+let roomConfig = {}; // { room_id: { label, password } }
+
+const loadRoomConfig = async () => {
+    try {
+        const client = createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
+        const { data, error } = await client
+            .from('rescue_room_config')
+            .select('room_id, label, password')
+            .eq('active', true)
+            .order('room_id');
+        if (error) throw error;
+        roomConfig = {};
+        data.forEach(r => { roomConfig[r.room_id] = { label: r.label, password: r.password }; });
+        return true;
+    } catch (e) {
+        console.error('ルーム設定の取得失敗:', e);
+        return false;
+    }
+};
+
+const populateRoomSelect = (selId, currentId = null) => {
+    const sel = document.getElementById(selId);
     if (!sel) return;
     sel.innerHTML = '';
-    Object.entries(CONFIG.rooms).forEach(([id, room]) => {
+    Object.entries(roomConfig).forEach(([id, room]) => {
         const opt = document.createElement('option');
         opt.value = id;
         opt.textContent = room.label;
+        if (id === currentId) opt.selected = true;
         sel.appendChild(opt);
     });
+};
+
+const initLoginScreen = async () => {
+    const loginBtn = document.getElementById('login-btn');
+    const loginErr = document.getElementById('login-error');
+    if (loginBtn) {
+        loginBtn.textContent = '読み込み中...';
+        loginBtn.disabled = true;
+    }
+    const ok = await loadRoomConfig();
+    if (!ok || Object.keys(roomConfig).length === 0) {
+        if (loginErr) {
+            loginErr.textContent = 'ルーム設定の取得に失敗しました。Supabaseの設定を確認してください。';
+            loginErr.classList.remove('hidden');
+        }
+        if (loginBtn) loginBtn.textContent = '入室する 🚪';
+        return;
+    }
+    populateRoomSelect('login-room');
+    if (loginBtn) {
+        loginBtn.textContent = '入室する 🚪';
+        loginBtn.disabled = false;
+    }
 };
 
 window.doLogin = () => {
@@ -458,9 +497,9 @@ window.doLogin = () => {
     const password = document.getElementById('login-password')?.value;
     const errEl    = document.getElementById('login-error');
 
-    const room = CONFIG.rooms[roomId];
+    const room = roomConfig[roomId];
     if (!room || password !== room.password) {
-        errEl?.classList.remove('hidden');
+        if (errEl) { errEl.textContent = 'パスワードが違います'; errEl.classList.remove('hidden'); }
         document.getElementById('login-password').value = '';
         setTimeout(() => errEl?.classList.add('hidden'), 2000);
         return;
@@ -471,23 +510,14 @@ window.doLogin = () => {
     document.getElementById('login-screen')?.classList.add('hidden');
     document.getElementById('app-main-content')?.classList.remove('hidden');
     const roomLabel = document.getElementById('current-room-label');
-    if (roomLabel) roomLabel.textContent = CONFIG.rooms[roomId]?.label || roomId;
+    if (roomLabel) roomLabel.textContent = room.label;
     setupSupabase(roomId);
 };
 
 // ルーム変更モーダルを表示
-window.showRoomChange = () => {
-    const sel = document.getElementById('change-room-select');
-    if (sel) {
-        sel.innerHTML = '';
-        Object.entries(CONFIG.rooms).forEach(([id, room]) => {
-            const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = room.label;
-            if (id === currentRoomId) opt.selected = true;
-            sel.appendChild(opt);
-        });
-    }
+window.showRoomChange = async () => {
+    await loadRoomConfig();
+    populateRoomSelect('change-room-select', currentRoomId);
     document.getElementById('change-room-password').value = '';
     document.getElementById('change-room-error')?.classList.add('hidden');
     document.getElementById('room-change-modal')?.classList.remove('hidden');
@@ -499,9 +529,9 @@ window.doRoomChange = () => {
     const password = document.getElementById('change-room-password')?.value;
     const errEl    = document.getElementById('change-room-error');
 
-    const room = CONFIG.rooms[roomId];
+    const room = roomConfig[roomId];
     if (!room || password !== room.password) {
-        errEl?.classList.remove('hidden');
+        if (errEl) { errEl.textContent = 'パスワードが違います'; errEl.classList.remove('hidden'); }
         document.getElementById('change-room-password').value = '';
         setTimeout(() => errEl?.classList.add('hidden'), 2000);
         return;
@@ -509,15 +539,10 @@ window.doRoomChange = () => {
 
     // ルーム変更成功
     document.getElementById('room-change-modal')?.classList.add('hidden');
-
-    // ポーリング停止
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-
     currentRoomId = roomId;
     const roomLabel = document.getElementById('current-room-label');
     if (roomLabel) roomLabel.textContent = room.label;
-
-    // UIをリセットしてから新ルームに接続
     clearAllUI();
     setupSupabase(roomId);
 };
@@ -1201,7 +1226,7 @@ window.updateSummaryView = () => {
 initHistoryUI();
 window.initDials();
 window.updateSummaryView();
-initLoginScreen();
+initLoginScreen(); // Supabaseからルーム設定を取得してログイン画面を初期化
 </script>
 </body>
 </html>
